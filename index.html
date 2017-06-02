@@ -8,10 +8,10 @@
   <body style="position: relative" onload="listRawImage()">
     <div class="main_content_container">
       <div class="resize_fit_center">
-        <img id="myImage" />
+        <img id="myImage" onload="imageSize()"/>
       </div>
       <canvas class="cnvs" id='myCanvas' width="500px" height="500px" onmousedown="mouseDown(this, event)"
-        onmousemove='mouseMove(this, event)' onmouseup="mouseUp()"/>
+        onmousemove='mouseMove(this, event)' onmouseup="mouseUp(event)"/>
     </div>
     <div class="right_list_conatiner" width="300px" height="600px">
         <div class="help_message_coantainer">
@@ -40,14 +40,14 @@
   </body>
 
   <script>
-    fs = require('fs')
-    clipper = require('image-clipper')
+    const fs = require('fs')
+    const clipper = require('image-clipper')
 
-    canvas = document.getElementById('myCanvas')
-    ctx = canvas.getContext('2d')
-    mImg = document.getElementById('myImage')
-    mLabel = document.getElementById('mLabel')
-    mBottomCantainer = document.getElementById('bottom_container')
+    const canvas = document.getElementById('myCanvas')
+    const ctx = canvas.getContext('2d')
+    const mImg = document.getElementById('myImage')
+    const mLabel = document.getElementById('mLabel')
+    const mBottomCantainer = document.getElementById('bottom_container')
     window.onkeydown = keyDown
     window.onkeyup = keyUp
 
@@ -59,11 +59,19 @@
     const KEY_CODE_CTRL = 17
     const KEY_CODE_CMD = 91
 
+    class Rect{
+      constructor(left, top, right, bottom){
+        this.left = left
+        this.top = top
+        this.right = right
+        this.bottom = bottom
+      }
+    }
+
     var mIsShiftPressed = false;
     var mIsCtrlPressed = false;
     var mIsCmdPressed = false;
 
-    var x = 0, y = 0
     var beginDraw = false
     var mAllRawFiles = []
     var mRawBuff = []
@@ -72,6 +80,8 @@
     var mCurrentImageName='';
 
     var mRects = []
+    var mImgRect = new Rect(0, 0, 0, 0)
+    var mDragRect = new Rect(0, 0, 0, 0)
 
     var mRawImage0 = document.getElementById('raw_image_0')
     var mRawImage1 = document.getElementById('raw_image_1')
@@ -91,13 +101,14 @@
 
     function mouseDown(obj, ev){
       if (ev.button == 2){
-        saveImage()
+        saveImage(mCurrentImageName)
         fetchCurrentImagePath()
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         return
       }
-      x = ev.clientX
-      y = ev.clientY
+
+      mDragRect.left = ev.clientX
+      mDragRect.top = ev.clientY
       beginDraw = true
       ctx.clearRect(0, 0, canvas.width, canvas.height)
     }
@@ -106,27 +117,111 @@
       if(beginDraw){
         ctx.strokeStyle = '#ff0000'
         ctx.clearRect(0, 0, canvas.width, canvas.height)
-        var endX = ev.clientX - x;
-        var endY = ev.clientY - y;
+        mDragRect.right = ev.clientX
+        mDragRect.bottom = ev.clientY
         if(mIsShiftPressed){
-            endX = endX > endY ? endX : endY
-            endY = endX
+            mDragRect.right = mDragRect.right > mDragRect.bottom ? mDragRect.right : mDragRect.bottom
+            mDragRect.bottom =  mDragRect.right
         }
-        ctx.strokeRect(x, y, endX, endY);
+        ctx.strokeRect(mDragRect.left, mDragRect.top, mDragRect.right - mDragRect.left, mDragRect.bottom - mDragRect.top);
+        ctx.fillStyle = '#000'
+        ctx.fillText("("+mDragRect.right+", "+mDragRect.bottom+")", mDragRect.right, mDragRect.bottom);
       }
     }
 
-    function mouseUp(){
+    function mouseUp(ev){
       beginDraw = false
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-    }
-
-    function saveImage(){
-      if(mCurrentImageName == undefined){
+      if(mIsCmdPressed || mIsCtrlPressed){
         return
       }
-      fs.createReadStream(RAW_DIR + mCurrentImageName)
-        .pipe(fs.createWriteStream(MANAGED_DIR + mCurrentImageName));
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      var width = mImgRect.right - mImgRect.left
+      var height = mImgRect.bottom - mImgRect.top
+      var ratio = height > width ? height / 500 : width / 500;
+      var l = (mDragRect.left - mImgRect.left) * ratio
+      var t = (mDragRect.top - mImgRect.top) * ratio
+      var r = (mDragRect.right - mImgRect.left) * ratio
+      var b = (mDragRect.bottom - mImgRect.top) * ratio
+      var rect = new Rect(l, t, r, b)
+      mLabel.innerHTML = (rect.right - rect.left) + " : " + (rect.bottom - rect.top) + "<br>"
+      mLabel.innerHTML = mImgRect.left + " : " + mImgRect.top
+      cropImage(mCurrentImageName, rect)
+    }
+
+    function cropImage(fileName, rect){
+      clipper(RAW_DIR + fileName, function() {
+        this.crop(rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top)
+        .quality(100)
+        .toFile(MANAGED_DIR + fileName, function() {
+          mRawBuff2.unshift(fileName)
+          mManagedBuff.unshift(fileName)
+          if(mRawBuff2.length > 3){
+            mRawBuff2.pop()
+            mManagedBuff.pop()
+          }
+          notifyRaw2BuffChanged()
+          fetchCurrentImagePath()
+        });
+      });
+    }
+
+    function saveImage(fileName){
+      if(fileName == undefined){
+        return
+      }
+      copyFile(RAW_DIR + fileName, MANAGED_DIR + fileName, function cb(err) {
+        if(err){
+          return
+        }
+        mRawBuff2.unshift(fileName)
+        mManagedBuff.unshift(fileName)
+        if(mRawBuff2.length > 3){
+          mRawBuff2.pop()
+          mManagedBuff.pop()
+        }
+        notifyRaw2BuffChanged()
+      })
+    }
+
+    function imageSize(){
+      var naturalWidth = mImg.naturalWidth
+      var naturalHeight = mImg.naturalHeight
+      if(naturalWidth > naturalHeight){
+        var relativeHeight = naturalHeight / naturalWidth * 500
+        var offset = (500 - relativeHeight) / 2
+        mImgRect = new Rect(0, offset, 500, 500-offset*2)
+      }else{
+        var relativeWidth = naturalWidth / naturalHeight * 500
+        var offset = (500 - relativeWidth) / 2
+        mImgRect = new Rect(offset, 0, 500 - offset * 2, 500)
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.strokeStyle = '#00f'
+      ctx.strokeRect(mImgRect.left, mImgRect.top, mImgRect.right, mImgRect.bottom)
+    }
+
+    function copyFile(source, target, cb) {
+      var cbCalled = false;
+
+      var rd = fs.createReadStream(source);
+      rd.on("error", function(err) {
+        done(err);
+      });
+      var wr = fs.createWriteStream(target);
+      wr.on("error", function(err) {
+        done(err);
+      });
+      wr.on("close", function(ex) {
+        done();
+      });
+      rd.pipe(wr);
+
+      function done(err) {
+        if (!cbCalled) {
+          cb(err);
+          cbCalled = true;
+        }
+      }
     }
 
     function listRawImage() {
@@ -165,6 +260,13 @@
       }
     }
 
+    function notifyRaw2BuffChanged(){
+      for (var i=0; i<mRawBuff2.length && i<mManagedImageL.length; i++){
+        mManagedImageL[i].src = RAW_DIR + mRawBuff2[i]
+        mManagedImageR[i].src = MANAGED_DIR + mManagedBuff[i]
+      }
+    }
+
     function keyDown(event){
       switch (event.keyCode) {
         case KEY_CODE_CMD:
@@ -192,5 +294,6 @@
           break;
       }
     }
+
   </script>
 </html>

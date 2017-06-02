@@ -49,6 +49,15 @@ div {
   border: 1px solid #222;
 }
 
+.right_list_conatiner > div > img {
+  width: 145px;
+  height: 145px;
+  padding-left: 2px;
+  padding-right: 2px;
+  box-sizing: border-box;
+  object-fit: contain;
+}
+
 .bottom_list_conatiner {
   position: absolute;
   height: 100px;
