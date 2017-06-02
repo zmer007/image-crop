@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="assets/css/image.css"
+
+  </head>
+  <body style="position: relative" onload="listRawImage()">
+    <div class="main_content_container">
+      <div class="resize_fit_center">
+        <img id="myImage" />
+      </div>
+      <canvas class="cnvs" id='myCanvas' width="500px" height="500px" onmousedown="mouseDown(this, event)"
+        onmousemove='mouseMove(this, event)' onmouseup="mouseUp()"/>
+    </div>
+    <div class="right_list_conatiner" width="300px" height="600px">
+        <div class="help_message_coantainer">
+          <label id="mLabel">readDir:</label>
+        </div>
+        <div>
+          <img id="managed_image_top_l" />
+          <img id="managed_image_top_r" />
+        </div>
+        <div>
+          <img id="managed_image_mid_l" />
+          <img id="managed_image_mid_r" />
+        </div>
+        <div>
+          <img id="managed_image_btm_l" />
+          <img id="managed_image_btm_r" />
+        </div>
+    </div>
+    <div id="bottom_container" class="bottom_list_conatiner">
+      <img id="raw_image_0"/>
+      <img id="raw_image_1"/>
+      <img id="raw_image_2"/>
+      <img id="raw_image_3"/>
+      <img id="raw_image_4"/>
+    </div>
+  </body>
+
+  <script>
+    fs = require('fs')
+
+    canvas = document.getElementById('myCanvas')
+    mImg = document.getElementById('myImage')
+    mLabel = document.getElementById('mLabel')
+    mBottomCantainer = document.getElementById('bottom_container')
+
+    const RAW_DIR = '/Users/lgd/Desktop/tmp_data/raw/'
+
+    var x = 0, y = 0
+    var beginDraw = false
+    var mAllRawFiles = []
+    var mRawBuff = []
+    var mManagedBuff = []
+    var mRawBuff2 = []
+
+    var mRawImage0 = document.getElementById('raw_image_0')
+    var mRawImage1 = document.getElementById('raw_image_1')
+    var mRawImage2 = document.getElementById('raw_image_2')
+    var mRawImage3 = document.getElementById('raw_image_3')
+    var mRawImage4 = document.getElementById('raw_image_4')
+    var mRawImages = [mRawImage0, mRawImage1, mRawImage2, mRawImage3, mRawImage4]
+
+    var mManagedImageBtmL = document.getElementById('managed_image_btm_l')
+    var mManagedImageBtmR = document.getElementById('managed_image_btm_r')
+    var mManagedImageMidL = document.getElementById('managed_image_mid_l')
+    var mManagedImageMidR = document.getElementById('managed_image_mid_r')
+    var mManagedImageTopL = document.getElementById('managed_image_top_l')
+    var mManagedImageTopR = document.getElementById('managed_image_top_r')
+    var mManagedImageL = [mManagedImageBtmL, mManagedImageMidL, mManagedImageTopL]
+    var mManagedImageR = [mManagedImageBtmR, mManagedImageMidR, mManagedImageTopR]
+
+    function mouseDown(obj, ev){
+      x = ev.clientX
+      y = ev.clientY
+      beginDraw = true
+      ctx = canvas.getContext('2d')
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      loadImage(RAW_DIR + fetchCurrentImagePath())
+    }
+
+    function mouseMove(obj, ev){
+      console.log(ev.clientX);
+      if(beginDraw){
+        ctx = canvas.getContext('2d')
+        ctx.strokeStyle = '#ff0000'
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.strokeRect(x, y, ev.clientX - x, ev.clientY - y);
+      }
+    }
+
+    function mouseUp(){
+      beginDraw = false
+    }
+
+    function listRawImage() {
+      mLabel.innerHTML = 'Start: <br />'
+
+      fs.readdir(RAW_DIR, function(err, files){
+        if(err){
+          mLabel.innerHTML += "error"
+        }
+
+        files.forEach(function(fileName){
+          mAllRawFiles.unshift(fileName)
+        })
+
+        var path = mAllRawFiles.pop()
+        while(path != null && mRawBuff.length < mRawImages.length){
+          mRawBuff.unshift(path)
+          path = mAllRawFiles.pop()
+        }
+        notifyRawBuffChanged()
+      })
+    }
+
+    function loadImage(path){
+      mImg.src = "file://"+path;
+    }
+
+    function fetchCurrentImagePath(){
+      mRawBuff.unshift(mAllRawFiles.pop())
+      result = mRawBuff.pop()
+      notifyRawBuffChanged()
+      return result
+    }
+
+    function notifyRawBuffChanged(){
+      for (var i=0; i<mRawBuff.length && i<mRawImages.length; i++){
+        mRawImages[i].src = RAW_DIR + mRawBuff[i]
+      }
+    }
+  </script>
+</html>
