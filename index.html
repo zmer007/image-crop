@@ -15,7 +15,7 @@
     </div>
     <div class="right_list_conatiner" width="300px" height="600px">
         <div class="help_message_coantainer">
-          <label id="mLabel">readDir:</label>
+          <label id="mLabel">这个框里放说明</label>
         </div>
         <div>
           <img id="managed_image_top_l" />
@@ -41,13 +41,27 @@
 
   <script>
     fs = require('fs')
+    clipper = require('image-clipper')
 
     canvas = document.getElementById('myCanvas')
+    ctx = canvas.getContext('2d')
     mImg = document.getElementById('myImage')
     mLabel = document.getElementById('mLabel')
     mBottomCantainer = document.getElementById('bottom_container')
+    window.onkeydown = keyDown
+    window.onkeyup = keyUp
 
     const RAW_DIR = '/Users/lgd/Desktop/tmp_data/raw/'
+    const MANAGED_DIR = '/Users/lgd/Desktop/tmp_data/manage/'
+
+    // 键盘监听事件
+    const KEY_CODE_SHIFT = 16
+    const KEY_CODE_CTRL = 17
+    const KEY_CODE_CMD = 91
+
+    var mIsShiftPressed = false;
+    var mIsCtrlPressed = false;
+    var mIsCmdPressed = false;
 
     var x = 0, y = 0
     var beginDraw = false
@@ -55,6 +69,9 @@
     var mRawBuff = []
     var mManagedBuff = []
     var mRawBuff2 = []
+    var mCurrentImageName='';
+
+    var mRects = []
 
     var mRawImage0 = document.getElementById('raw_image_0')
     var mRawImage1 = document.getElementById('raw_image_1')
@@ -73,31 +90,46 @@
     var mManagedImageR = [mManagedImageBtmR, mManagedImageMidR, mManagedImageTopR]
 
     function mouseDown(obj, ev){
+      if (ev.button == 2){
+        saveImage()
+        fetchCurrentImagePath()
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        return
+      }
       x = ev.clientX
       y = ev.clientY
       beginDraw = true
-      ctx = canvas.getContext('2d')
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      loadImage(RAW_DIR + fetchCurrentImagePath())
     }
 
     function mouseMove(obj, ev){
-      console.log(ev.clientX);
       if(beginDraw){
-        ctx = canvas.getContext('2d')
         ctx.strokeStyle = '#ff0000'
         ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.strokeRect(x, y, ev.clientX - x, ev.clientY - y);
+        var endX = ev.clientX - x;
+        var endY = ev.clientY - y;
+        if(mIsShiftPressed){
+            endX = endX > endY ? endX : endY
+            endY = endX
+        }
+        ctx.strokeRect(x, y, endX, endY);
       }
     }
 
     function mouseUp(){
       beginDraw = false
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+
+    function saveImage(){
+      if(mCurrentImageName == undefined){
+        return
+      }
+      fs.createReadStream(RAW_DIR + mCurrentImageName)
+        .pipe(fs.createWriteStream(MANAGED_DIR + mCurrentImageName));
     }
 
     function listRawImage() {
-      mLabel.innerHTML = 'Start: <br />'
 
       fs.readdir(RAW_DIR, function(err, files){
         if(err){
@@ -109,28 +141,55 @@
         })
 
         var path = mAllRawFiles.pop()
-        while(path != null && mRawBuff.length < mRawImages.length){
-          mRawBuff.unshift(path)
+        mRawBuff.unshift(path)
+        while(mRawBuff.length < mRawImages.length){
           path = mAllRawFiles.pop()
+          mRawBuff.unshift(path)
         }
-        notifyRawBuffChanged()
+        fetchCurrentImagePath()
       })
-    }
-
-    function loadImage(path){
-      mImg.src = "file://"+path;
     }
 
     function fetchCurrentImagePath(){
       mRawBuff.unshift(mAllRawFiles.pop())
-      result = mRawBuff.pop()
-      notifyRawBuffChanged()
-      return result
+      mCurrentImageName = mRawBuff.pop()
+      if(mCurrentImageName != undefined){
+        mImg.src = "file://"+RAW_DIR + mCurrentImageName
+        notifyRawBuffChanged()
+      }
     }
 
     function notifyRawBuffChanged(){
       for (var i=0; i<mRawBuff.length && i<mRawImages.length; i++){
         mRawImages[i].src = RAW_DIR + mRawBuff[i]
+      }
+    }
+
+    function keyDown(event){
+      switch (event.keyCode) {
+        case KEY_CODE_CMD:
+          mIsCmdPressed = true
+          break;
+        case KEY_CODE_CTRL:
+          mIsCtrlPressed = true
+          break;
+        case KEY_CODE_SHIFT:
+          mIsShiftPressed = true
+          break;
+      }
+    }
+
+    function keyUp(event){
+      switch (event.keyCode) {
+        case KEY_CODE_CMD:
+          mIsCmdPressed = false
+          break;
+        case KEY_CODE_CTRL:
+          mIsCtrlPressed = false
+          break;
+        case KEY_CODE_SHIFT:
+          mIsShiftPressed = false
+          break;
       }
     }
   </script>
