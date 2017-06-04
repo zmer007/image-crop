@@ -2,8 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="assets/css/image.css"
-
+    <link rel="stylesheet" href="styles.css">
   </head>
   <body style="position: relative" onload="listRawImage()">
     <div class="main_content_container">
@@ -43,6 +42,9 @@
     const fs = require('fs')
     const clipper = require('image-clipper')
 
+    const RAW_DIR = '/Users/xiaoshuang/Desktop/tmp_data/raw/红花酢浆草/'
+    const MANAGED_DIR = '/Users/xiaoshuang/Desktop/tmp_data/managed/红花酢浆草/'
+
     const canvas = document.getElementById('myCanvas')
     const ctx = canvas.getContext('2d')
     const mImg = document.getElementById('myImage')
@@ -51,13 +53,12 @@
     window.onkeydown = keyDown
     window.onkeyup = keyUp
 
-    const RAW_DIR = '/Users/lgd/Desktop/tmp_data/raw/'
-    const MANAGED_DIR = '/Users/lgd/Desktop/tmp_data/manage/'
-
     // 键盘监听事件
     const KEY_CODE_SHIFT = 16
     const KEY_CODE_CTRL = 17
     const KEY_CODE_CMD = 91
+    const KEY_CODE_DEL = 8
+    const KEY_CODE_ESC = 27
 
     class Rect{
       constructor(left, top, right, bottom){
@@ -73,15 +74,15 @@
     var mIsCmdPressed = false;
 
     var beginDraw = false
-    var mAllRawFiles = []
-    var mRawBuff = []
-    var mManagedBuff = []
-    var mRawBuff2 = []
-    var mCurrentImageName='';
+    var mAllRawFiles = [] // 所有未处理图片
+    var mRawBuff = [] // 待处理图片(<=5)
+    var mManagedBuff = [] // 处理过的图片(<=3)
+    var mRawBuff2 = [] // 记录处理过的图片(<=3)
+    var mCurrentImageName='' // 处理中的图片名称
 
-    var mRects = []
-    var mImgRect = new Rect(0, 0, 0, 0)
-    var mDragRect = new Rect(0, 0, 0, 0)
+    var mImgRect = new Rect(0, 0, 0, 0) // 图片在相框(img)中的位置
+    var mDragRects = []
+    var mImgRatio = 1
 
     var mRawImage0 = document.getElementById('raw_image_0')
     var mRawImage1 = document.getElementById('raw_image_1')
@@ -100,69 +101,99 @@
     var mManagedImageR = [mManagedImageBtmR, mManagedImageMidR, mManagedImageTopR]
 
     function mouseDown(obj, ev){
-      if (ev.button == 2){
-        saveImage(mCurrentImageName)
-        fetchCurrentImagePath()
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        return
-      }
-
-      mDragRect.left = ev.clientX
-      mDragRect.top = ev.clientY
       beginDraw = true
+      if(mIsCmdPressed){
+        mDragRects.push(new Rect(ev.clientX, ev.clientY))
+        return
+      }else{
+        mDragRects = []
+        mDragRects.push(new Rect(ev.clientX, ev.clientY))
+      }
       ctx.clearRect(0, 0, canvas.width, canvas.height)
     }
 
     function mouseMove(obj, ev){
+      if(ev.button == 2){
+        return
+      }
       if(beginDraw){
-        ctx.strokeStyle = '#ff0000'
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        mDragRect.right = ev.clientX
-        mDragRect.bottom = ev.clientY
+        var currentDrag = mDragRects[mDragRects.length-1]
+        currentDrag.right = ev.clientX
+        currentDrag.bottom = ev.clientY
         if(mIsShiftPressed){
-            mDragRect.right = mDragRect.right > mDragRect.bottom ? mDragRect.right : mDragRect.bottom
-            mDragRect.bottom =  mDragRect.right
+            currentDrag.right = currentDrag.right > currentDrag.bottom ? currentDrag.right : currentDrag.bottom
+            currentDrag.bottom =  currentDrag.right
         }
-        ctx.strokeRect(mDragRect.left, mDragRect.top, mDragRect.right - mDragRect.left, mDragRect.bottom - mDragRect.top);
+        drawDragRects(mDragRects)
         ctx.fillStyle = '#000'
-        ctx.fillText("("+mDragRect.right+", "+mDragRect.bottom+")", mDragRect.right, mDragRect.bottom);
+        ctx.fillText("("+currentDrag.right+", "+currentDrag.bottom+")", currentDrag.right, currentDrag.bottom);
+      }
+    }
+
+    function drawDragRects(rects){
+      ctx.strokeStyle = '#ff0000'
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      for (var i=0; i<rects.length; i++){
+        var rect = mDragRects[i]
+        ctx.strokeRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
       }
     }
 
     function mouseUp(ev){
       beginDraw = false
-      if(mIsCmdPressed || mIsCtrlPressed){
+
+      if (ev.button == 2){
+        saveImage(mCurrentImageName)
+        fetchCurrentImagePath()
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        mDragRects = []
         return
       }
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      var width = mImgRect.right - mImgRect.left
-      var height = mImgRect.bottom - mImgRect.top
-      var ratio = height > width ? height / 500 : width / 500;
-      var l = (mDragRect.left - mImgRect.left) * ratio
-      var t = (mDragRect.top - mImgRect.top) * ratio
-      var r = (mDragRect.right - mImgRect.left) * ratio
-      var b = (mDragRect.bottom - mImgRect.top) * ratio
-      var rect = new Rect(l, t, r, b)
-      mLabel.innerHTML = (rect.right - rect.left) + " : " + (rect.bottom - rect.top) + "<br>"
-      mLabel.innerHTML = mImgRect.left + " : " + mImgRect.top
-      cropImage(mCurrentImageName, rect)
+
+      if(mIsCmdPressed){
+        return
+      }
+      restoryRectsAndCrop(mCurrentImageName)
     }
 
-    function cropImage(fileName, rect){
+    function restoryRectsAndCrop(imageName){
+      if(mDragRects.length == 0){
+        saveImage(imageName)
+        fetchCurrentImagePath()
+      }else{
+        var rects = []
+        for (var i = 0; i < mDragRects.length; i++) {
+          var r = mDragRects[i]
+          rects[i] = new Rect((r.left - mImgRect.left) * mImgRatio,
+                              (r.top - mImgRect.top) * mImgRatio,
+                              (r.right - mImgRect.left) * mImgRatio,
+                              (r.bottom - mImgRect.top) * mImgRatio)
+        }
+        cropImage(imageName, rects)
+      }
+      mDragRects = []
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+
+    function cropImage(fileName, rects){
       clipper(RAW_DIR + fileName, function() {
-        this.crop(rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top)
-        .quality(100)
-        .toFile(MANAGED_DIR + fileName, function() {
-          mRawBuff2.unshift(fileName)
-          mManagedBuff.unshift(fileName)
-          if(mRawBuff2.length > 3){
-            mRawBuff2.pop()
-            mManagedBuff.pop()
-          }
-          notifyRaw2BuffChanged()
-          fetchCurrentImagePath()
-        });
-      });
+        for (var i=0; i<rects.length; i++){
+          var rect = rects[i]
+
+          this.crop(rect.left, rect.top, rect.right-rect.left, rect.bottom-rect.top)
+            .quality(100)
+            .toFile(MANAGED_DIR + fileName, function() {
+              mRawBuff2.unshift(fileName)
+              mManagedBuff.unshift(fileName)
+              if(mRawBuff2.length > 3){
+                mRawBuff2.pop()
+                mManagedBuff.pop()
+              }
+              notifyRaw2BuffChanged()
+              fetchCurrentImagePath()
+            })
+        }
+      })
     }
 
     function saveImage(fileName){
@@ -187,11 +218,13 @@
       var naturalWidth = mImg.naturalWidth
       var naturalHeight = mImg.naturalHeight
       if(naturalWidth > naturalHeight){
-        var relativeHeight = naturalHeight / naturalWidth * 500
+        mImgRatio = naturalWidth / 500
+        var relativeHeight = naturalHeight / mImgRatio
         var offset = (500 - relativeHeight) / 2
         mImgRect = new Rect(0, offset, 500, 500-offset*2)
       }else{
-        var relativeWidth = naturalWidth / naturalHeight * 500
+        mImgRatio = naturalHeight / 500
+        var relativeWidth = naturalWidth / mImgRatio
         var offset = (500 - relativeWidth) / 2
         mImgRect = new Rect(offset, 0, 500 - offset * 2, 500)
       }
@@ -252,6 +285,7 @@
         mImg.src = "file://"+RAW_DIR + mCurrentImageName
         notifyRawBuffChanged()
       }
+      mLabel.innerHTML = '剩余：'+ (mAllRawFiles.length) + '张未显示'
     }
 
     function notifyRawBuffChanged(){
@@ -270,10 +304,8 @@
     function keyDown(event){
       switch (event.keyCode) {
         case KEY_CODE_CMD:
-          mIsCmdPressed = true
-          break;
         case KEY_CODE_CTRL:
-          mIsCtrlPressed = true
+          mIsCmdPressed = true
           break;
         case KEY_CODE_SHIFT:
           mIsShiftPressed = true
@@ -282,15 +314,24 @@
     }
 
     function keyUp(event){
+      mLabel.innerHTML = event.keyCode
       switch (event.keyCode) {
         case KEY_CODE_CMD:
-          mIsCmdPressed = false
-          break;
         case KEY_CODE_CTRL:
-          mIsCtrlPressed = false
+          mIsCmdPressed = false
+          if(mDragRects.length==0){
+            saveImage(mCurrentImageName)
+            fetchCurrentImagePath()
+          }else{
+            restoryRectsAndCrop(mDragRects)
+          }
           break;
         case KEY_CODE_SHIFT:
           mIsShiftPressed = false
+          break;
+        case KEY_CODE_ESC:
+        case KEY_CODE_DEL:
+          fetchCurrentImagePath()
           break;
       }
     }
